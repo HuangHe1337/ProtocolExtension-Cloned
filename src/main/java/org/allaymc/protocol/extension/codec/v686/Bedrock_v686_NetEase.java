@@ -9,6 +9,7 @@ import org.allaymc.protocol.extension.codec.v686.serializer.TextSerializer_v686_
 import org.allaymc.protocol.extension.packet.ConfirmSkinPacket;
 import org.allaymc.protocol.extension.packet.NetEaseJsonPacket;
 import org.allaymc.protocol.extension.packet.NetEasePlayerAuthInputPacket;
+import org.allaymc.protocol.extension.packet.NetEaseTextPacket;
 import org.allaymc.protocol.extension.packet.PyRpcPacket;
 import org.allaymc.protocol.extension.packet.StoreBuySuccessPacket;
 import org.allaymc.protocol.extension.codec.common.serializer.PlayerEnchantOptionsSerializer_v407_NetEase;
@@ -40,7 +41,9 @@ public class Bedrock_v686_NetEase extends Bedrock_v686 {
             .updateFactory(PlayerAuthInputPacket.class, NetEasePlayerAuthInputPacket::new)
             .updateSerializer(PlayerAuthInputPacket.class, PlayerAuthInputSerializer_v686_NetEase.INSTANCE)
             .aliasPacket(NetEasePlayerAuthInputPacket.class, PlayerAuthInputPacket.class)
+            .updateFactory(TextPacket.class, NetEaseTextPacket::new)
             .updateSerializer(TextPacket.class, TextSerializer_v686_NetEase.INSTANCE)
+            .aliasPacket(NetEaseTextPacket.class, TextPacket.class)
             .updateSerializer(PlayerEnchantOptionsPacket.class, PlayerEnchantOptionsSerializer_v407_NetEase.INSTANCE)
             .registerPacket(PyRpcPacket::new, PyRpcSerializer.INSTANCE, 200, PacketRecipient.BOTH)
             .registerPacket(StoreBuySuccessPacket::new, StoreBuySuccessSerializer.INSTANCE, 202, PacketRecipient.BOTH) // TODO: check packet recipient
