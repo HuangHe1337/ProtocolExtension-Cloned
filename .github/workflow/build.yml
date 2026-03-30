@@ -1,0 +1,103 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: '发布版本号 (例如: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Inject Custom Gradle Script
+        run: |
+          cat << 'EOF' > package-artifacts.gradle
+          allprojects {
+              afterEvaluate { project ->
+                  if (project.plugins.hasPlugin('java') || project.plugins.hasPlugin('java-library')) {
+                      
+                      // 任务 1：提取本体 jar 到 Unbundled 目录
+                      task gatherLibs(type: Copy) {
+                          from project.tasks.named('jar')
+                          into rootProject.file("release-artifacts/Unbundled/${project.name}")
+                      }
+                      
+                      // 任务 2：提取所有依赖的 jar 到 dependencies 文件夹
+                      task gatherDeps(type: Copy) {
+                          from project.configurations.findByName('runtimeClasspath')
+                          into rootProject.file("release-artifacts/Unbundled/${project.name}/dependencies")
+                      }
+                      
+                      // 任务 3：构建包含所有依赖的 Fat Jar 到 Bundled 目录
+                      task buildFatJar(type: Jar) {
+                          archiveClassifier.set('fat')
+                          duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+                          destinationDirectory.set(rootProject.file("release-artifacts/Bundled/${project.name}"))
+                          
+                          from project.sourceSets.main.output
+                          
+                          def runtimeCp = project.configurations.findByName('runtimeClasspath')
+                          if (runtimeCp) {
+                              dependsOn runtimeCp
+                              from({
+                                  // 使用 Groovy 语法的 findAll 和 collect 代替 filter 和 map
+                                  runtimeCp.findAll { it.name.endsWith('.jar') }.collect { zipTree(it) }
+                              }) {
+                                  // 排除签名文件和元数据防止依赖打包后运行报错
+                                  exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.EC'
+                                  exclude 'META-INF/INDEX.LIST'
+                                  exclude 'module-info.class'
+                              }
+                          }
+                      }
+                      
+                      // 汇总任务
+                      task buildReleaseArtifacts {
+                          dependsOn gatherLibs, gatherDeps, buildFatJar
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Build and extract artifacts
+        run: ./gradlew build buildReleaseArtifacts --init-script package-artifacts.gradle
+
+      - name: Zip Artifacts for Release
+        run: |
+          cd release-artifacts
+          zip -r Unbundled-Artifacts.zip Unbundled/
+          zip -r Bundled-FatJar.zip Bundled/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: Release ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: |
+            release-artifacts/Unbundled-Artifacts.zip
+            release-artifacts/Bundled-FatJar.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
